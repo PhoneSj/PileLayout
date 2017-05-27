@@ -2,8 +2,9 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/PileLlayout.iml" filepath="$PROJECT_DIR$/PileLlayout.iml" />
+      <module fileurl="file://$PROJECT_DIR$/PileLayout.iml" filepath="$PROJECT_DIR$/PileLayout.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/pilelayoutlib/pilelayoutlib.iml" filepath="$PROJECT_DIR$/pilelayoutlib/pilelayoutlib.iml" />
     </modules>
   </component>
 </project>
