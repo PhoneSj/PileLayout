@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="PileLayout">
+        <attr name="itemMarginTop" format="integer|reference"/>
+        <attr name="itemMarginBottom" format="integer|reference"/>
+        <attr name="leftThreshold" format="integer|reference"/>
+        <attr name="rightThreshold" format="integer|reference"/>
+    </declare-styleable>
+</resources>
