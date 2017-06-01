@@ -14,6 +14,10 @@ public class ItemDesc {
 	private int curY;
 	//View当前的横坐标
 	private int curX;
+	//记录View水平动画开始时的横坐标
+	private int startX;
+	//记录View水平动画结束时的横坐标
+	private int endX;
 
 	public int getUpThreshold() {
 		return upThreshold;
@@ -31,6 +35,14 @@ public class ItemDesc {
 		return curX;
 	}
 
+	public int getStartX() {
+		return startX;
+	}
+
+	public int getEndX() {
+		return endX;
+	}
+
 	public void setUpThreshold(int upThreshold) {
 		this.upThreshold = upThreshold;
 	}
@@ -45,5 +57,13 @@ public class ItemDesc {
 
 	public void setCurX(int curX) {
 		this.curX = curX;
+	}
+
+	public void setStartX(int startX) {
+		this.startX = startX;
+	}
+
+	public void setEndX(int endX) {
+		this.endX = endX;
 	}
 }

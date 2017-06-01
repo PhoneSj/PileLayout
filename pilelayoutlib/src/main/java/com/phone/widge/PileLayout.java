@@ -1,10 +1,20 @@
 package com.phone.widge;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Point;
+import android.graphics.Shader;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -22,19 +32,15 @@ public class PileLayout extends ViewGroup {
 
 	private static final int DEFAULT_ITEM_MARGIN_TOP = 30;
 	private static final int DEFAULT_ITEM_MARGIN_BOTTOM = 30;
-	private static final int DEFAULT_LEFT_THRESHOLD = -50;
-	private static final int DEFAULT_RIGHT_THRESHOLD = 50;
+	private static final int DEFAULT_HORIZONTAL_THRESHOLD = 150;
 	//轻微滑动阈值
 	private int mTouchSlop;
 	//相邻item间顶部的距离
 	private int mItemsMarginTop;
 	//相邻item间底部的距离
 	private int mItemsMarginBottom;
-	//子View左右边界的阈值
-	private int mLeftThreshold;
-	private int mRightThreshold;
-	//当前设置的滑动出来的方向
-	private Mode mMode = Mode.LEFT;
+	//初始化时子View的偏移量
+	private int mHorizontalThreshold;
 	//当前的滑动状态
 	private State mState = State.CLOSE;
 
@@ -52,16 +58,23 @@ public class PileLayout extends ViewGroup {
 	//判定的滑动方向
 	private Direction mDirection = Direction.NONE;
 	//当前x方向的偏移总量
-	private int mDistanceX;
-	//水平滑动绘制效果
-	//	private EffectControl effectControl;
+	private float mDistanceX;
+	//手指松开后的动画
+	private ValueAnimator mItemAnimator;
+
+	private Paint mBackgroundPaint;
+	private Paint mBezierPaint;
+	private Path mPath;
+	private int mColor = Color.BLUE;
+	private Shader mShader;
+	private Point mPoints[] = new Point[11];
+	//贝塞尔曲线波长
+	private int waveLength;
+	//贝塞尔曲线波峰-波谷间的距离
+	private int waveHeight = 50;
 
 	enum Direction {
 		HORIZONTAL, VERTICAL, NONE
-	}
-
-	enum Mode {
-		LEFT, RIGHT
 	}
 
 	enum State {
@@ -80,18 +93,36 @@ public class PileLayout extends ViewGroup {
 		super(context, attrs, defStyleAttr);
 		//获得系统的轻微滑动阈值
 		mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
-		//		effectControl=new EffectControl(this);
 		//获取自定义属性及其值
 		TypedArray array = context.obtainStyledAttributes(attrs, R.styleable.PileLayout);
-		mItemsMarginTop = array.getInt(R.styleable.PileLayout_itemMarginTop, DEFAULT_ITEM_MARGIN_TOP);
-		mItemsMarginBottom = array.getInt(R.styleable.PileLayout_itemMarginBottom, DEFAULT_ITEM_MARGIN_BOTTOM);
-		mLeftThreshold = array.getInt(R.styleable.PileLayout_leftThreshold, DEFAULT_LEFT_THRESHOLD);
-		mRightThreshold = array.getInt(R.styleable.PileLayout_rightThreshold, DEFAULT_RIGHT_THRESHOLD);
+		mItemsMarginTop = (int) array.getDimension(R.styleable.PileLayout_itemMarginTop, DEFAULT_ITEM_MARGIN_TOP);
+		mItemsMarginBottom = (int) array.getDimension(R.styleable.PileLayout_itemMarginBottom,
+				DEFAULT_ITEM_MARGIN_BOTTOM);
+		mHorizontalThreshold = (int) array.getDimension(R.styleable.PileLayout_horizontalThreshold,
+				DEFAULT_HORIZONTAL_THRESHOLD);
+		initDrawParams();
+	}
+
+	private void initDrawParams() {
+		mBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		mShader = new LinearGradient(0, 0, getMeasuredWidth(), 0, Color.TRANSPARENT, Color.GREEN,
+				Shader.TileMode.CLAMP);
+		mBackgroundPaint.setStyle(Paint.Style.FILL);
+		mBackgroundPaint.setShader(mShader);
+		mBezierPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		mBezierPaint.setStyle(Paint.Style.FILL);
+		mBezierPaint.setColor(mColor);
+		mPath = new Path();
+		for (int i = 0; i < mPoints.length; i++) {
+			mPoints[i] = new Point();
+		}
 	}
 
 	@Override
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
+		waveLength = getMeasuredHeight() / 2;
+		invalidate();
 	}
 
 	@Override
@@ -156,18 +187,10 @@ public class PileLayout extends ViewGroup {
 
 		for (int i = 0; i < count; i++) {
 			final View child = getChildAt(i);
-			//			int childWidth = child.getMeasuredWidth();
-			//			int childHeight = child.getMeasuredHeight();
 			ItemDesc desc = descMap.get(child);
 			int childLeft;
 			int childTop = desc.getCurY();
-			if (mMode == Mode.LEFT) {
-				//				desc.setCurX(mLeftThreshold);
-				childLeft = desc.getCurX();
-			} else {
-				//				desc.setCurX(mRightThreshold);
-				childLeft = desc.getCurX();
-			}
+			childLeft = desc.getCurX();
 			child.layout(childLeft, childTop, childLeft + child.getMeasuredWidth(),
 					childTop + child.getMeasuredHeight());
 		}
@@ -232,18 +255,23 @@ public class PileLayout extends ViewGroup {
 			case MotionEvent.ACTION_MOVE:
 				float dx = event.getX() - mDownX;
 				float dy = event.getY() - mDownY;
-				if (Math.abs(dx) > mTouchSlop * 2 || Math.abs(dy) > mTouchSlop) {
-					if (Math.abs(dx) > Math.abs(dy) * 2) {
+				if (mDirection == Direction.NONE && (Math.abs(dx) > mTouchSlop || Math.abs(dy) > mTouchSlop)) {
+					if (Math.abs(dx) > Math.abs(dy)) {
 						mDirection = Direction.HORIZONTAL;
+						Log.i("phoneTest", "==========");
 					} else {
 						mDirection = Direction.VERTICAL;
+						Log.i("phoneTest", "+++++++++++++");
 					}
+					oldState = mState;
+					mState = State.MIDDLE;
 				}
 
 				if (mDirection == Direction.HORIZONTAL) {
 					//响应水平方向滑动，这里记录累加值
-					float mDistanceX = event.getX() - mDownX;
+					mDistanceX = event.getX() - mDownX;
 					mDistanceX = checkDiffX((int) mDistanceX);
+					offsetXForChildren(event);
 				} else if (mDirection == Direction.VERTICAL) {
 					//响应竖直方向滑动，这里记录当前的偏移值
 					float diffY = event.getY() - mLastY;
@@ -257,6 +285,10 @@ public class PileLayout extends ViewGroup {
 				break;
 			case MotionEvent.ACTION_UP:
 			case MotionEvent.ACTION_CANCEL:
+				//只有横向滑动才需要执行释放操作
+				if (mDirection == Direction.HORIZONTAL) {
+					onRelease();
+				}
 				mDirection = Direction.NONE;
 				mLastX = 0;
 				mLastY = 0;
@@ -265,40 +297,215 @@ public class PileLayout extends ViewGroup {
 		return true;
 	}
 
+	private State oldState = State.CLOSE;
+	private State newState = State.CLOSE;
+
+	private int index = 10;
+
+	private void onRelease() {
+		judgeNewState();
+		if (mItemAnimator != null && mItemAnimator.isRunning()) {
+			mItemAnimator.cancel();
+			mItemAnimator = null;
+		}
+		mItemAnimator = ValueAnimator.ofFloat(0f, 1f);
+		mItemAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+			@Override
+			public void onAnimationUpdate(ValueAnimator valueAnimator) {
+				//				Log.d("phoneTest", "onAnimationUpdate()");
+				float fraction = (float) valueAnimator.getAnimatedValue();
+				int count = PileLayout.this.getChildCount();
+				for (int i = 0; i < count; i++) {
+					final View child = PileLayout.this.getChildAt(i);
+					ItemDesc desc = descMap.get(child);
+					int curX = (int) (desc.getStartX() + (desc.getEndX() - desc.getStartX()) * fraction);
+					desc.setCurX(curX);
+					PileLayout.this.requestLayout();
+				}
+				calculatePoints(fraction);
+				PileLayout.this.postInvalidate();
+			}
+		});
+		mItemAnimator.addListener(new AnimatorListenerAdapter() {
+
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				super.onAnimationEnd(animation);
+				mState = newState;
+				oldState = mState;
+			}
+		});
+		//初始化
+		int count = PileLayout.this.getChildCount();
+		for (int i = 0; i < count; i++) {
+			final View child = PileLayout.this.getChildAt(i);
+			ItemDesc desc = descMap.get(child);
+			desc.setStartX(desc.getCurX());
+			if (newState == State.CLOSE) {
+				desc.setEndX(mHorizontalThreshold);
+			} else if (newState == State.OPEN) {
+				desc.setEndX(0);
+			} else {
+				Log.i("phone", "PileLayout状态State出错");
+			}
+		}
+		mItemAnimator.setDuration(500);
+		mItemAnimator.start();
+	}
+
+	/**
+	 * 判断动画结束后State的值
+	 */
+	private void judgeNewState() {
+		if (oldState == State.OPEN) {
+			if (mDistanceX > mHorizontalThreshold / 2) {
+				newState = State.CLOSE;
+			} else {
+				newState = State.OPEN;
+			}
+		} else if (oldState == State.CLOSE) {
+			if (mDistanceX < -mHorizontalThreshold / 2) {
+				newState = State.OPEN;
+			} else {
+				newState = State.CLOSE;
+			}
+		}
+		Log.d("phoneTest", "oldState:" + oldState);
+		Log.d("phoneTest", "mState:" + mState);
+		Log.d("phoneTest", "newState:" + newState);
+	}
+
+	private Paint testPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
 	@Override
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
-		//		effectControl.draw(canvas);
+		float fraction;
+		if (oldState == State.CLOSE) {
+			fraction = -mDistanceX * 1.0f / mHorizontalThreshold;
+		} else {
+			fraction = mDistanceX * 1.0f / mHorizontalThreshold;
+		}
+		calculatePoints(fraction);
+		waveHeight = (int) Math.abs(mDistanceX * 1.0f);
+		//		Log.i("phoneTest", "mDistanceX:" + mDistanceX);
+		//		Log.i("phoneTest", "waveHeight:" + waveHeight);
+		canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), mBackgroundPaint);
+		mPath.reset();
+		mPath.moveTo(mPoints[0].x, mPoints[0].y);
+		mPath.lineTo(mPoints[1].x, mPoints[1].y);
+		mPath.quadTo(mPoints[2].x, mPoints[2].y, mPoints[3].x, mPoints[3].y);
+		mPath.quadTo(mPoints[4].x, mPoints[4].y, mPoints[5].x, mPoints[5].y);
+		mPath.quadTo(mPoints[6].x, mPoints[6].y, mPoints[7].x, mPoints[7].y);
+		mPath.quadTo(mPoints[8].x, mPoints[8].y, mPoints[9].x, mPoints[9].y);
+		mPath.lineTo(mPoints[10].x, mPoints[10].y);
+		mPath.lineTo(mPoints[0].x, mPoints[0].y);
+		mPath.close();
+		canvas.drawPath(mPath, mBezierPaint);
+
+		testPaint.setStyle(Paint.Style.FILL);
+		testPaint.setColor(Color.RED);
+		for (int i = 0; i < mPoints.length; i++) {
+			canvas.drawCircle(mPoints[i].x, mPoints[i].y, 10, testPaint);
+		}
 	}
 
-	//	/**
-	//	 * x方向上移动子View
-	//	 *
-	//	 * @param diffX
-	//	 */
-	//	private void offsetXForChildren(int diffX, MotionEvent event) {
-	//		int count = getChildCount();
-	//		for (int i = 0; i < count; i++) {
-	//			final View child = getChildAt(i);
-	//			int y = (int) event.getY();
-	//			ItemDesc desc = descMap.get(child);
-	//			int itemCenterY = desc.getCurY() + child.getMeasuredHeight() / 2;
-	//			double fraction = calculateItemXFraction(itemCenterY, y);
-	//			int curX;
-	//			if (mMode == Mode.LEFT) {
-	//				Log.i("phoneTest", "=====left=====");
-	//				diffX = checkDiffX(diffX);
-	//				curX = (int) (diffX * fraction - mLeftThreshold);
-	//			} else {
-	//				Log.i("phoneTest", "=====right=====");
-	//				diffX = checkDiffX(diffX);
-	//				curX = (int) (diffX * fraction + mRightThreshold);
-	//			}
-	//			Log.i("phoneTest", "curX:" + curX);
-	//			desc.setCurX(curX);
-	//		}
-	//		requestLayout();
-	//	}
+	/**
+	 * 计算绘制贝塞尔曲线时的11个点的坐标
+	 */
+	private void calculatePoints(float fraction) {
+		//		waveHeight = (int) (mDistanceX * 1.0f) - 30;
+		int width = getMeasuredWidth();
+		int height = getMeasuredHeight();
+		//		Log.i("phoneTest", "mDistanceX:" + mDistanceX);
+		//		Log.i("phoneTest", "waveHeight:" + waveHeight);
+		if (oldState == State.CLOSE) {
+			waveHeight = (int) (getMeasuredWidth() / 2 * fraction);
+
+			mPoints[0].x = width;
+			mPoints[0].y = 0;
+			mPoints[10].x = width;
+			mPoints[10].y = height;
+
+			mPoints[1].x = width;
+			mPoints[1].y = height / 2 - waveLength / 2;
+			mPoints[9].x = width;
+			mPoints[9].y = height / 2 + waveLength / 2;
+
+			mPoints[2].x = width;
+			mPoints[2].y = height / 2 - waveLength / 6;
+			mPoints[8].x = width;
+			mPoints[8].y = height / 2 + waveLength / 6;
+
+			mPoints[3].x = width - waveHeight / 2;
+			mPoints[3].y = height / 2 - waveLength / 6;
+			mPoints[7].x = width - waveHeight / 2;
+			mPoints[7].y = height / 2 + waveLength / 6;
+
+			mPoints[4].x = width - waveHeight;
+			mPoints[4].y = height / 2 - waveLength / 6;
+			mPoints[6].x = width - waveHeight;
+			mPoints[6].y = height / 2 + waveLength / 6;
+
+			mPoints[5].x = width - waveHeight;
+			mPoints[5].y = height / 2;
+		} else if (oldState == State.OPEN) {
+			mPoints[0].x = 0;
+			mPoints[0].y = 0;
+			mPoints[10].x = 0;
+			mPoints[10].y = getMeasuredHeight();
+
+			mPoints[1].x = 0;
+			mPoints[1].y = getMeasuredHeight() / 2 - waveLength / 2;
+			mPoints[9].x = 0;
+			mPoints[9].y = getMeasuredHeight() / 2 + waveLength / 2;
+
+			mPoints[2].x = 0;
+			mPoints[2].y = getMeasuredHeight() / 2 - waveLength / 6;
+			mPoints[8].x = 0;
+			mPoints[8].y = getMeasuredHeight() / 2 + waveLength / 6;
+
+			mPoints[3].x = 0 + waveHeight / 3;
+			mPoints[3].y = getMeasuredHeight() / 2 - waveLength / 6;
+			mPoints[7].x = 0 + waveHeight / 3;
+			mPoints[7].y = getMeasuredHeight() / 2 + waveLength / 6;
+
+			mPoints[4].x = 0 + waveHeight;
+			mPoints[4].y = getMeasuredHeight() / 2 - waveLength / 6;
+			mPoints[6].x = 0 + waveHeight;
+			mPoints[6].y = getMeasuredHeight() / 2 + waveLength / 6;
+
+			mPoints[5].x = 0 + waveHeight;
+			mPoints[5].y = getMeasuredHeight() / 2;
+		} else {
+			Log.e("phone", "oldState状态错误，不能为Middle状态");
+		}
+	}
+
+	/**
+	 * x方向上移动子View
+	 *
+	 * @param event
+	 */
+	private void offsetXForChildren(MotionEvent event) {
+		int count = getChildCount();
+		for (int i = 0; i < count; i++) {
+			final View child = getChildAt(i);
+			int eventY = (int) event.getY();
+			ItemDesc desc = descMap.get(child);
+			int itemCenterY = desc.getCurY() + child.getMeasuredHeight() / 2;
+			double fraction = calculateItemXFraction(itemCenterY, eventY);
+			//			int curX = (int) (diffX * fraction + mHorizontalThreshold);
+			int curX;
+			if (oldState == State.CLOSE) {
+				curX = (int) (mHorizontalThreshold + mDistanceX * fraction);
+			} else {
+				curX = (int) (mDistanceX * fraction);
+			}
+			desc.setCurX(curX);
+		}
+		requestLayout();
+	}
 
 	/**
 	 * 校正水平滑动偏移量，不能超过水平滑动阈值
@@ -308,9 +515,9 @@ public class PileLayout extends ViewGroup {
 	 */
 	private int checkDiffX(int diffX) {
 		if (diffX > 0) {
-			diffX = Math.min(diffX, -mLeftThreshold);
+			diffX = Math.min(diffX, mHorizontalThreshold);
 		} else if (diffX < 0) {
-			diffX = -Math.max(diffX, -mRightThreshold);
+			diffX = Math.max(diffX, -mHorizontalThreshold);
 		}
 		return diffX;
 	}
@@ -478,12 +685,7 @@ public class PileLayout extends ViewGroup {
 			final ItemDesc desc = new ItemDesc();
 			descMap.put(child, desc);
 			int curY = mItemsMarginTop * i + getPaddingTop();
-			int curX = getPaddingLeft();
-			if (mMode == Mode.LEFT) {
-				curX = mLeftThreshold;
-			} else {
-				curX = mRightThreshold;
-			}
+			int curX = mHorizontalThreshold;
 			desc.setCurX(curX);
 			desc.setCurY(curY);
 		}
