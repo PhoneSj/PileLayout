@@ -10,7 +10,6 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.Point;
 import android.graphics.Shader;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
@@ -43,6 +42,10 @@ public class PileLayout extends ViewGroup {
 	private int mHorizontalThreshold;
 	//当前的滑动状态
 	private State mState = State.CLOSE;
+	//上一次的滑动状态
+	private State oldState = State.CLOSE;
+	//将要进入的状态
+	private State newState = State.CLOSE;
 
 	private ListAdapter adapter;
 	//记录所有子View位置、阈值的集合
@@ -61,22 +64,30 @@ public class PileLayout extends ViewGroup {
 	private float mDistanceX;
 	//手指松开后的动画
 	private ValueAnimator mItemAnimator;
-
-	private Paint mBackgroundPaint;
+	//背景贝塞尔曲线的画笔
 	private Paint mBezierPaint;
+	private Paint testPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+	//背景绘制路径
 	private Path mPath;
-	private int mColor = Color.BLUE;
+	//背景颜色渐变
 	private Shader mShader;
-	private Point mPoints[] = new Point[11];
+	//别塞尔曲线的控制点集合
+	private PointDesc mPoints[] = new PointDesc[11];
 	//贝塞尔曲线波长
 	private int waveLength;
 	//贝塞尔曲线波峰-波谷间的距离
 	private int waveHeight = 50;
 
+	/**
+	 * 当前判定的滑动方向
+	 */
 	enum Direction {
 		HORIZONTAL, VERTICAL, NONE
 	}
 
+	/**
+	 * 当前侧滑的状态
+	 */
 	enum State {
 		OPEN, CLOSE, MIDDLE
 	}
@@ -103,25 +114,26 @@ public class PileLayout extends ViewGroup {
 		initDrawParams();
 	}
 
+	/**
+	 * 初始化背景绘制的相关参数
+	 */
 	private void initDrawParams() {
-		mBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		mShader = new LinearGradient(0, 0, getMeasuredWidth(), 0, Color.TRANSPARENT, Color.GREEN,
-				Shader.TileMode.CLAMP);
-		mBackgroundPaint.setStyle(Paint.Style.FILL);
-		mBackgroundPaint.setShader(mShader);
 		mBezierPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		mBezierPaint.setStyle(Paint.Style.FILL);
-		mBezierPaint.setColor(mColor);
 		mPath = new Path();
 		for (int i = 0; i < mPoints.length; i++) {
-			mPoints[i] = new Point();
+			mPoints[i] = new PointDesc();
 		}
 	}
 
 	@Override
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
-		waveLength = getMeasuredHeight() / 2;
+		waveLength = getMeasuredHeight();
+		mShader = new LinearGradient(0, 0, getMeasuredWidth(), 0, Color.TRANSPARENT, Color.GREEN,
+				Shader.TileMode.CLAMP);
+		mBezierPaint.setStyle(Paint.Style.FILL);
+		mBezierPaint.setShader(mShader);
+		calculatePoints(0, 0);
 		invalidate();
 	}
 
@@ -131,9 +143,6 @@ public class PileLayout extends ViewGroup {
 		int widthMode = MeasureSpec.getMode(widthMeasureSpec);
 		int heightSize = MeasureSpec.getSize(heightMeasureSpec);
 		int heightMode = MeasureSpec.getMode(heightMeasureSpec);
-		//		ViewGroup.LayoutParams lp = getLayoutParams();
-		//		lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-		//		setLayoutParams(lp);
 
 		int maxChildWidth = 0;
 		int totalHeight = 0;
@@ -297,11 +306,6 @@ public class PileLayout extends ViewGroup {
 		return true;
 	}
 
-	private State oldState = State.CLOSE;
-	private State newState = State.CLOSE;
-
-	private int index = 10;
-
 	private void onRelease() {
 		judgeNewState();
 		if (mItemAnimator != null && mItemAnimator.isRunning()) {
@@ -314,15 +318,21 @@ public class PileLayout extends ViewGroup {
 			public void onAnimationUpdate(ValueAnimator valueAnimator) {
 				//				Log.d("phoneTest", "onAnimationUpdate()");
 				float fraction = (float) valueAnimator.getAnimatedValue();
-				int count = PileLayout.this.getChildCount();
-				for (int i = 0; i < count; i++) {
+				//更新子View的位置
+				int childCount = PileLayout.this.getChildCount();
+				for (int i = 0; i < childCount; i++) {
 					final View child = PileLayout.this.getChildAt(i);
 					ItemDesc desc = descMap.get(child);
 					int curX = (int) (desc.getStartX() + (desc.getEndX() - desc.getStartX()) * fraction);
 					desc.setCurX(curX);
 					PileLayout.this.requestLayout();
 				}
-				calculatePoints(fraction);
+				//更新贝塞尔曲线控制点的位置
+				int pointCount = mPoints.length;
+				for (int i = 0; i < pointCount; i++) {
+					PointDesc point = mPoints[i];
+					point.x = (int) (point.startX + (point.endX - point.startX) * fraction);
+				}
 				PileLayout.this.postInvalidate();
 			}
 		});
@@ -335,9 +345,9 @@ public class PileLayout extends ViewGroup {
 				oldState = mState;
 			}
 		});
-		//初始化
-		int count = PileLayout.this.getChildCount();
-		for (int i = 0; i < count; i++) {
+		//动画执行前初始化子控件的相关参数
+		int childCount = PileLayout.this.getChildCount();
+		for (int i = 0; i < childCount; i++) {
 			final View child = PileLayout.this.getChildAt(i);
 			ItemDesc desc = descMap.get(child);
 			desc.setStartX(desc.getCurX());
@@ -345,6 +355,19 @@ public class PileLayout extends ViewGroup {
 				desc.setEndX(mHorizontalThreshold);
 			} else if (newState == State.OPEN) {
 				desc.setEndX(0);
+			} else {
+				Log.i("phone", "PileLayout状态State出错");
+			}
+		}
+		//动画执行前初始化贝塞尔控制点的相关参数
+		int pointCount = mPoints.length;
+		for (int i = 0; i < pointCount; i++) {
+			PointDesc point = mPoints[i];
+			point.startX = point.x;
+			if (newState == State.CLOSE) {
+				point.endX = getMeasuredWidth();
+			} else if (newState == State.OPEN) {
+				point.endX = 0;
 			} else {
 				Log.i("phone", "PileLayout状态State出错");
 			}
@@ -370,28 +393,17 @@ public class PileLayout extends ViewGroup {
 				newState = State.CLOSE;
 			}
 		}
-		Log.d("phoneTest", "oldState:" + oldState);
-		Log.d("phoneTest", "mState:" + mState);
-		Log.d("phoneTest", "newState:" + newState);
 	}
-
-	private Paint testPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
 	@Override
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
-		float fraction;
-		if (oldState == State.CLOSE) {
-			fraction = -mDistanceX * 1.0f / mHorizontalThreshold;
-		} else {
-			fraction = mDistanceX * 1.0f / mHorizontalThreshold;
-		}
-		calculatePoints(fraction);
 		waveHeight = (int) Math.abs(mDistanceX * 1.0f);
 		//		Log.i("phoneTest", "mDistanceX:" + mDistanceX);
 		//		Log.i("phoneTest", "waveHeight:" + waveHeight);
-		canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), mBackgroundPaint);
+		//		canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), mBackgroundPaint);
 		mPath.reset();
+		mPath.moveTo(getMeasuredWidth(), 0);
 		mPath.moveTo(mPoints[0].x, mPoints[0].y);
 		mPath.lineTo(mPoints[1].x, mPoints[1].y);
 		mPath.quadTo(mPoints[2].x, mPoints[2].y, mPoints[3].x, mPoints[3].y);
@@ -399,7 +411,8 @@ public class PileLayout extends ViewGroup {
 		mPath.quadTo(mPoints[6].x, mPoints[6].y, mPoints[7].x, mPoints[7].y);
 		mPath.quadTo(mPoints[8].x, mPoints[8].y, mPoints[9].x, mPoints[9].y);
 		mPath.lineTo(mPoints[10].x, mPoints[10].y);
-		mPath.lineTo(mPoints[0].x, mPoints[0].y);
+		mPath.lineTo(getMeasuredWidth(), getMeasuredHeight());
+		mPath.lineTo(getMeasuredWidth(), 0);
 		mPath.close();
 		canvas.drawPath(mPath, mBezierPaint);
 
@@ -413,42 +426,38 @@ public class PileLayout extends ViewGroup {
 	/**
 	 * 计算绘制贝塞尔曲线时的11个点的坐标
 	 */
-	private void calculatePoints(float fraction) {
-		//		waveHeight = (int) (mDistanceX * 1.0f) - 30;
+	private void calculatePoints(float fraction, int eventY) {
 		int width = getMeasuredWidth();
 		int height = getMeasuredHeight();
-		//		Log.i("phoneTest", "mDistanceX:" + mDistanceX);
-		//		Log.i("phoneTest", "waveHeight:" + waveHeight);
+		waveHeight = (int) (getMeasuredWidth() / 2 * fraction);
 		if (oldState == State.CLOSE) {
-			waveHeight = (int) (getMeasuredWidth() / 2 * fraction);
-
 			mPoints[0].x = width;
 			mPoints[0].y = 0;
 			mPoints[10].x = width;
 			mPoints[10].y = height;
 
 			mPoints[1].x = width;
-			mPoints[1].y = height / 2 - waveLength / 2;
+			mPoints[1].y = eventY - waveLength / 2;
 			mPoints[9].x = width;
-			mPoints[9].y = height / 2 + waveLength / 2;
+			mPoints[9].y = eventY + waveLength / 2;
 
 			mPoints[2].x = width;
-			mPoints[2].y = height / 2 - waveLength / 6;
+			mPoints[2].y = eventY - waveLength / 3;
 			mPoints[8].x = width;
-			mPoints[8].y = height / 2 + waveLength / 6;
+			mPoints[8].y = eventY + waveLength / 3;
 
 			mPoints[3].x = width - waveHeight / 2;
-			mPoints[3].y = height / 2 - waveLength / 6;
+			mPoints[3].y = eventY - waveLength / 6;
 			mPoints[7].x = width - waveHeight / 2;
-			mPoints[7].y = height / 2 + waveLength / 6;
+			mPoints[7].y = eventY + waveLength / 6;
 
 			mPoints[4].x = width - waveHeight;
-			mPoints[4].y = height / 2 - waveLength / 6;
+			mPoints[4].y = eventY - waveLength / 12;
 			mPoints[6].x = width - waveHeight;
-			mPoints[6].y = height / 2 + waveLength / 6;
+			mPoints[6].y = eventY + waveLength / 12;
 
 			mPoints[5].x = width - waveHeight;
-			mPoints[5].y = height / 2;
+			mPoints[5].y = eventY;
 		} else if (oldState == State.OPEN) {
 			mPoints[0].x = 0;
 			mPoints[0].y = 0;
@@ -456,27 +465,27 @@ public class PileLayout extends ViewGroup {
 			mPoints[10].y = getMeasuredHeight();
 
 			mPoints[1].x = 0;
-			mPoints[1].y = getMeasuredHeight() / 2 - waveLength / 2;
+			mPoints[1].y = eventY - waveLength / 2;
 			mPoints[9].x = 0;
-			mPoints[9].y = getMeasuredHeight() / 2 + waveLength / 2;
+			mPoints[9].y = eventY + waveLength / 2;
 
 			mPoints[2].x = 0;
-			mPoints[2].y = getMeasuredHeight() / 2 - waveLength / 6;
+			mPoints[2].y = eventY - waveLength / 3;
 			mPoints[8].x = 0;
-			mPoints[8].y = getMeasuredHeight() / 2 + waveLength / 6;
+			mPoints[8].y = eventY + waveLength / 3;
 
-			mPoints[3].x = 0 + waveHeight / 3;
-			mPoints[3].y = getMeasuredHeight() / 2 - waveLength / 6;
-			mPoints[7].x = 0 + waveHeight / 3;
-			mPoints[7].y = getMeasuredHeight() / 2 + waveLength / 6;
+			mPoints[3].x = 0 + waveHeight / 2;
+			mPoints[3].y = eventY - waveLength / 6;
+			mPoints[7].x = 0 + waveHeight / 2;
+			mPoints[7].y = eventY + waveLength / 6;
 
 			mPoints[4].x = 0 + waveHeight;
-			mPoints[4].y = getMeasuredHeight() / 2 - waveLength / 6;
+			mPoints[4].y = eventY - waveLength / 12;
 			mPoints[6].x = 0 + waveHeight;
-			mPoints[6].y = getMeasuredHeight() / 2 + waveLength / 6;
+			mPoints[6].y = eventY + waveLength / 12;
 
 			mPoints[5].x = 0 + waveHeight;
-			mPoints[5].y = getMeasuredHeight() / 2;
+			mPoints[5].y = eventY;
 		} else {
 			Log.e("phone", "oldState状态错误，不能为Middle状态");
 		}
@@ -489,9 +498,9 @@ public class PileLayout extends ViewGroup {
 	 */
 	private void offsetXForChildren(MotionEvent event) {
 		int count = getChildCount();
+		int eventY = (int) event.getY();
 		for (int i = 0; i < count; i++) {
 			final View child = getChildAt(i);
-			int eventY = (int) event.getY();
 			ItemDesc desc = descMap.get(child);
 			int itemCenterY = desc.getCurY() + child.getMeasuredHeight() / 2;
 			double fraction = calculateItemXFraction(itemCenterY, eventY);
@@ -505,6 +514,14 @@ public class PileLayout extends ViewGroup {
 			desc.setCurX(curX);
 		}
 		requestLayout();
+		float fraction;
+		if (oldState == State.CLOSE) {
+			fraction = -mDistanceX * 1.0f / mHorizontalThreshold;
+		} else {
+			fraction = mDistanceX * 1.0f / mHorizontalThreshold;
+		}
+		calculatePoints(fraction, eventY);
+		invalidate();
 	}
 
 	/**
