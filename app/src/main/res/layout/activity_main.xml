@@ -13,9 +13,10 @@
 
     <com.phone.widge.PileLayout
         android:id="@+id/pileLayout"
-        android:layout_width="wrap_content"
+        android:layout_width="150dp"
         android:layout_height="match_parent"
-        android:background="#ffaaaaaa">
+        android:background="#ffaaaaaa"
+        android:visibility="visible">
 
         <!--<ImageView-->
         <!--android:layout_width="wrap_content"-->
@@ -42,4 +43,10 @@
         <!--android:layout_height="wrap_content"-->
         <!--android:src="@mipmap/ic_launcher"/>-->
     </com.phone.widge.PileLayout>
+
+    <com.phone.custom.TestView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#ffffaaaa"
+        android:visibility="gone"/>
 </RelativeLayout>
