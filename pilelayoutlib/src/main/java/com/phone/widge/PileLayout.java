@@ -3,15 +3,8 @@ package com.phone.widge;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.LinearGradient;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.Point;
-import android.graphics.Shader;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -60,17 +53,8 @@ public class PileLayout extends ViewGroup {
 	private Direction mDirection = Direction.NONE;
 	//当前x方向的偏移总量
 	private int mDistanceX;
-
-	private Paint mPaint;
-	private Paint mBezierPaint;
-	private Path mPath;
-	private int mColor = Color.BLUE;
-	private Shader mShader;
-	private Point mPoints[] = new Point[11];
-	//贝塞尔曲线波长
-	private int waveLength;
-	//贝塞尔曲线波峰-波谷间的距离
-	private int waveHeight = 50;
+	//水平滑动绘制效果
+	//	private EffectControl effectControl;
 
 	enum Direction {
 		HORIZONTAL, VERTICAL, NONE
@@ -96,14 +80,7 @@ public class PileLayout extends ViewGroup {
 		super(context, attrs, defStyleAttr);
 		//获得系统的轻微滑动阈值
 		mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
-		mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		mPaint.setStyle(Paint.Style.FILL);
-		mBezierPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		mPaint.setStyle(Paint.Style.FILL);
-		mPath = new Path();
-		for (int i = 0; i < mPoints.length; i++) {
-			mPoints[i] = new Point();
-		}
+		//		effectControl=new EffectControl(this);
 		//获取自定义属性及其值
 		TypedArray array = context.obtainStyledAttributes(attrs, R.styleable.PileLayout);
 		mItemsMarginTop = array.getInt(R.styleable.PileLayout_itemMarginTop, DEFAULT_ITEM_MARGIN_TOP);
@@ -115,10 +92,6 @@ public class PileLayout extends ViewGroup {
 	@Override
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
-		mShader = new LinearGradient(0, 0, getMeasuredWidth(), 0, 0x0000ff00, 0xff00ff00, Shader.TileMode.CLAMP);
-		mPaint.setShader(mShader);
-		mBezierPaint.setColor(mColor);
-		waveLength = 600;
 	}
 
 	@Override
@@ -148,7 +121,6 @@ public class PileLayout extends ViewGroup {
 
 	@Override
 	protected void onLayout(boolean isChanged, int left, int top, int right, int bottom) {
-		Log.d("phoneTest", "onLayout()");
 		int count = getChildCount();
 		for (int i = 0; i < count; i++) {
 			final View child = getChildAt(i);
@@ -203,7 +175,7 @@ public class PileLayout extends ViewGroup {
 
 	/**
 	 * 计算指定位置子View的上边界阈值
-	 * 
+	 *
 	 * @param position
 	 * @return
 	 */
@@ -214,7 +186,7 @@ public class PileLayout extends ViewGroup {
 
 	/**
 	 * 计算指定位置子View的下边界阈值
-	 * 
+	 *
 	 * @param position
 	 * @return
 	 */
@@ -272,8 +244,6 @@ public class PileLayout extends ViewGroup {
 					//响应水平方向滑动，这里记录累加值
 					float mDistanceX = event.getX() - mDownX;
 					mDistanceX = checkDiffX((int) mDistanceX);
-					Log.i("phoneTest", "mDistanceX:" + mDistanceX);
-					//					offsetXForChildren((int) mDistanceX, event);
 				} else if (mDirection == Direction.VERTICAL) {
 					//响应竖直方向滑动，这里记录当前的偏移值
 					float diffY = event.getY() - mLastY;
@@ -297,65 +267,8 @@ public class PileLayout extends ViewGroup {
 
 	@Override
 	protected void onDraw(Canvas canvas) {
-		Log.d("phoneTest", "onDraw()");
 		super.onDraw(canvas);
-
-		canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), mPaint);
-
-		mPath.reset();
-		calculatePoints();
-		if (mMode == Mode.LEFT) {
-			mPath.reset();
-			mPath.moveTo(mPoints[0].x, mPoints[0].y);
-			mPath.lineTo(mPoints[1].x, mPoints[1].y);
-			mPath.quadTo(mPoints[2].x, mPoints[2].y, mPoints[3].x, mPoints[3].y);
-			mPath.quadTo(mPoints[4].x, mPoints[4].y, mPoints[5].x, mPoints[5].y);
-			mPath.quadTo(mPoints[6].x, mPoints[6].y, mPoints[7].x, mPoints[7].y);
-			mPath.quadTo(mPoints[8].x, mPoints[8].y, mPoints[9].x, mPoints[9].y);
-			mPath.lineTo(mPoints[10].x, mPoints[10].y);
-			mPath.lineTo(mPoints[0].x, mPoints[0].y);
-			mPath.close();
-		} else {
-
-		}
-		canvas.drawPath(mPath, mBezierPaint);
-	}
-
-	private void calculatePoints() {
-		if (mMode == Mode.LEFT) {
-			waveHeight = (int) Math.abs(mDistanceX * 1.0f);
-			Log.i("phoneTest", "mDistanceX:" + mDistanceX);
-			Log.i("phoneTest", "waveHeight:" + waveHeight);
-			mPoints[0].x = 0;
-			mPoints[0].y = 0;
-			mPoints[10].x = 0;
-			mPoints[10].y = getMeasuredHeight();
-
-			mPoints[1].x = 0;
-			mPoints[1].y = getMeasuredHeight() / 2 - waveLength / 2;
-			mPoints[9].x = 0;
-			mPoints[9].y = getMeasuredHeight() / 2 + waveLength / 2;
-
-			mPoints[2].x = 0;
-			mPoints[2].y = getMeasuredHeight() / 2 - waveLength / 6;
-			mPoints[8].x = 0;
-			mPoints[8].y = getMeasuredHeight() / 2 + waveLength / 6;
-
-			mPoints[3].x = waveHeight / 3;
-			mPoints[3].y = getMeasuredHeight() / 2 - waveLength / 6;
-			mPoints[7].x = waveHeight / 3;
-			mPoints[7].y = getMeasuredHeight() / 2 + waveLength / 6;
-
-			mPoints[4].x = waveHeight;
-			mPoints[4].y = getMeasuredHeight() / 2 - waveLength / 6;
-			mPoints[6].x = waveHeight;
-			mPoints[6].y = getMeasuredHeight() / 2 + waveLength / 6;
-
-			mPoints[5].x = waveHeight;
-			mPoints[5].y = getMeasuredHeight() / 2;
-		} else {
-			//TODO
-		}
+		//		effectControl.draw(canvas);
 	}
 
 	//	/**
@@ -414,7 +327,6 @@ public class PileLayout extends ViewGroup {
 	 * @param diffY
 	 */
 	private void offsetYForChildren(int diffY) {
-		Log.d("phoneTest", "offsetYForChildren()");
 		int count = getChildCount();
 		if (diffY > 0) {
 			//往下滑，倒序遍历，先让底部的子View消费，然后剩余的偏移量让顶部的子View消费
@@ -489,8 +401,6 @@ public class PileLayout extends ViewGroup {
 	 * @return
 	 */
 	private int calculateConsumeYForScrollDown(int position, int diffY) {
-		Log.d("phoneTest", "calculateConsumeY()");
-		Log.i("phoneTest", "position:" + position);
 		int count = adapter.getCount();
 		View curChild = null;
 		View lastChild = null;
@@ -534,7 +444,6 @@ public class PileLayout extends ViewGroup {
 	 * @param consumeY
 	 */
 	private void adjustItemY(View view, int consumeY) {
-		Log.d("phoneTest", "adjustItemY()");
 		ItemDesc desc = descMap.get(view);
 		int upThreshold = desc.getUpThreshold();
 		int downThreshold = desc.getDownThreshold();
