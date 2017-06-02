@@ -5,11 +5,13 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.database.DataSetObserver;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
@@ -29,9 +31,11 @@ import java.util.Map;
 
 public class PileLayout extends ViewGroup {
 
+	private static final int INVALID_POSITION = -1;
 	private static final int DEFAULT_ITEM_MARGIN_TOP = 30;
 	private static final int DEFAULT_ITEM_MARGIN_BOTTOM = 30;
 	private static final int DEFAULT_HORIZONTAL_THRESHOLD = 150;
+	private final static long LONG_CLICK_LIMIT = 300;
 	//轻微滑动阈值
 	private int mTouchSlop;
 	//相邻item间顶部的距离
@@ -77,6 +81,19 @@ public class PileLayout extends ViewGroup {
 	private int waveLength;
 	//贝塞尔曲线波峰-波谷间的距离
 	private int waveHeight = 50;
+	//最近一次down事件触发的时间
+	private long mLastDownTime;
+	//是否触发了长按响应
+	private boolean isLongClick = false;
+	//是否触发了点击事件
+	private boolean isClick = false;
+
+	private DataSetObserver dataSetObserver = new DataSetObserver() {
+		@Override
+		public void onChanged() {
+			attachChildViews();
+		}
+	};
 
 	/**
 	 * 当前判定的滑动方向
@@ -260,6 +277,21 @@ public class PileLayout extends ViewGroup {
 				mDownY = event.getY();
 				mLastX = event.getX();
 				mLastY = event.getY();
+				mLastDownTime = System.currentTimeMillis();
+				postDelayed(new Runnable() {
+					@Override
+					public void run() {
+						if (mDirection == Direction.NONE) {
+							//没有触发点击事件，才能触发长按事件
+							if (!isClick && mOnItemLongClickListener != null) {
+								int position = judgePosition();
+								mOnItemLongClickListener.onItemLongClick(position);
+								isLongClick = true;
+							}
+						}
+					}
+				}, LONG_CLICK_LIMIT);
+				isClick = false;
 				break;
 			case MotionEvent.ACTION_MOVE:
 				float dx = event.getX() - mDownX;
@@ -298,12 +330,72 @@ public class PileLayout extends ViewGroup {
 				if (mDirection == Direction.HORIZONTAL) {
 					onRelease();
 				}
+				if (mDirection == Direction.NONE) {
+					//没有触发长按事件才能触发点击事件
+					if (!isLongClick && mOnItemClickListener != null) {
+						int position = judgePosition();
+						mOnItemClickListener.onItemclick(position);
+						isClick = true;
+					}
+					isLongClick = false;
+				}
 				mDirection = Direction.NONE;
 				mLastX = 0;
 				mLastY = 0;
+				mLastDownTime = 0;
 				break;
 		}
 		return true;
+	}
+
+	/**
+	 * 判断点击的是哪个子View
+	 * 
+	 * @return
+	 */
+	private int judgePosition() {
+		int count = getChildCount();
+		View[] sortChildren = new View[count];
+		for (int i = 0; i < count; i++) {
+			final View child = getChildAt(i);
+			sortChildren[i] = child;
+		}
+		//按Z坐标排序，值大的在前面
+		View temp;
+		for (int i = 0; i < count; i++) {
+			for (int j = i; j < count - 1; j++) {
+				if (sortChildren[j].getZ() < sortChildren[j + 1].getZ()) {
+					temp = sortChildren[j];
+					sortChildren[j] = sortChildren[j + 1];
+					sortChildren[j + 1] = temp;
+				}
+
+			}
+
+		}
+		//找出接收事件的子控件
+		View targetView = null;
+		for (int i = 0; i < count; i++) {
+			final View child = sortChildren[i];
+			RectF rectF = new RectF(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+			if (rectF.contains(mDownX, mDownY)) {
+				targetView = child;
+				break;
+			}
+		}
+		//判定接收事件的子控件是第几个
+		if (targetView == null) {
+			return INVALID_POSITION;
+		}
+		int position = INVALID_POSITION;
+		for (int i = 0; i < count; i++) {
+			final View child = getChildAt(i);
+			if (child == targetView) {
+				position = i;
+				break;
+			}
+		}
+		return position;
 	}
 
 	private void onRelease() {
@@ -684,11 +776,11 @@ public class PileLayout extends ViewGroup {
 		if (adapter == null) {
 			throw new IllegalArgumentException("The adapter cannot be null.");
 		}
-		//		if (this.adapter != null) {
-		//			this.adapter.unregisterDataSetObserver(dataSetObserver);
-		//		}
+		if (this.adapter != null) {
+			this.adapter.unregisterDataSetObserver(dataSetObserver);
+		}
 		this.adapter = adapter;
-		//		this.adapter.registerDataSetObserver(dataSetObserver);
+		this.adapter.registerDataSetObserver(dataSetObserver);
 		attachChildViews();
 	}
 
@@ -707,5 +799,24 @@ public class PileLayout extends ViewGroup {
 			desc.setCurY(curY);
 		}
 		requestLayout();
+	}
+
+	private OnItemClickListener mOnItemClickListener;
+	private OnItemLongClickListener mOnItemLongClickListener;
+
+	public void setOnItemClickListener(OnItemClickListener listener) {
+		this.mOnItemClickListener = listener;
+	}
+
+	public void setOnItemLongClickListener(OnItemLongClickListener listener) {
+		this.mOnItemLongClickListener = listener;
+	}
+
+	public interface OnItemClickListener {
+		void onItemclick(int position);
+	}
+
+	public interface OnItemLongClickListener {
+		void onItemLongClick(int position);
 	}
 }

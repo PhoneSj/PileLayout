@@ -49,4 +49,11 @@
         android:layout_height="match_parent"
         android:background="#ffffaaaa"
         android:visibility="gone"/>
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:onClick="AddItem"
+        android:text="Add"/>
 </RelativeLayout>
