@@ -5,11 +5,12 @@ package com.phone.widge;
  */
 
 public class PointDesc {
-
+	//控制点当前的x坐标
 	int x;
+	//控制点当前的y坐标
 	int y;
+	//控制点动画执行前x坐标
 	int startX;
-	int startY;
+	//控制点动画执行后x坐标
 	int endX;
-	int endY;
 }

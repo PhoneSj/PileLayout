@@ -32,9 +32,9 @@ import java.util.Map;
 public class PileLayout extends ViewGroup {
 
 	private static final int INVALID_POSITION = -1;
-	private static final int DEFAULT_ITEM_MARGIN_TOP = 30;
-	private static final int DEFAULT_ITEM_MARGIN_BOTTOM = 30;
-	private static final int DEFAULT_HORIZONTAL_THRESHOLD = 150;
+	private static final int DEFAULT_ITEM_MARGIN_TOP = 50;
+	private static final int DEFAULT_ITEM_MARGIN_BOTTOM = 50;
+	private static final int DEFAULT_HORIZONTAL_THRESHOLD = 200;
 	private final static long LONG_CLICK_LIMIT = 300;
 	//轻微滑动阈值
 	private int mTouchSlop;
@@ -211,6 +211,7 @@ public class PileLayout extends ViewGroup {
 			}
 		}
 
+		//对每个子View布局，y坐标在上下阈值之间
 		for (int i = 0; i < count; i++) {
 			final View child = getChildAt(i);
 			ItemDesc desc = descMap.get(child);
@@ -299,10 +300,8 @@ public class PileLayout extends ViewGroup {
 				if (mDirection == Direction.NONE && (Math.abs(dx) > mTouchSlop || Math.abs(dy) > mTouchSlop)) {
 					if (Math.abs(dx) > Math.abs(dy)) {
 						mDirection = Direction.HORIZONTAL;
-						Log.i("phoneTest", "==========");
 					} else {
 						mDirection = Direction.VERTICAL;
-						Log.i("phoneTest", "+++++++++++++");
 					}
 					oldState = mState;
 					mState = State.MIDDLE;
@@ -408,7 +407,6 @@ public class PileLayout extends ViewGroup {
 		mItemAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
 			@Override
 			public void onAnimationUpdate(ValueAnimator valueAnimator) {
-				//				Log.d("phoneTest", "onAnimationUpdate()");
 				float fraction = (float) valueAnimator.getAnimatedValue();
 				//更新子View的位置
 				int childCount = PileLayout.this.getChildCount();
@@ -491,9 +489,6 @@ public class PileLayout extends ViewGroup {
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
 		waveHeight = (int) Math.abs(mDistanceX * 1.0f);
-		//		Log.i("phoneTest", "mDistanceX:" + mDistanceX);
-		//		Log.i("phoneTest", "waveHeight:" + waveHeight);
-		//		canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), mBackgroundPaint);
 		mPath.reset();
 		mPath.moveTo(getMeasuredWidth(), 0);
 		mPath.moveTo(mPoints[0].x, mPoints[0].y);
@@ -508,11 +503,11 @@ public class PileLayout extends ViewGroup {
 		mPath.close();
 		canvas.drawPath(mPath, mBezierPaint);
 
-		testPaint.setStyle(Paint.Style.FILL);
-		testPaint.setColor(Color.RED);
-		for (int i = 0; i < mPoints.length; i++) {
-			canvas.drawCircle(mPoints[i].x, mPoints[i].y, 10, testPaint);
-		}
+		//		testPaint.setStyle(Paint.Style.FILL);
+		//		testPaint.setColor(Color.RED);
+		//		for (int i = 0; i < mPoints.length; i++) {
+		//			canvas.drawCircle(mPoints[i].x, mPoints[i].y, 10, testPaint);
+		//		}
 	}
 
 	/**
@@ -782,6 +777,7 @@ public class PileLayout extends ViewGroup {
 		this.adapter = adapter;
 		this.adapter.registerDataSetObserver(dataSetObserver);
 		attachChildViews();
+		requestLayout();
 	}
 
 	private void attachChildViews() {
@@ -798,7 +794,6 @@ public class PileLayout extends ViewGroup {
 			desc.setCurX(curX);
 			desc.setCurY(curY);
 		}
-		requestLayout();
 	}
 
 	private OnItemClickListener mOnItemClickListener;
