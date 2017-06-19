@@ -1,10 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <declare-styleable name="PileLayout">
-        <attr name="itemMarginTop" format="dimension|reference"/>
-        <attr name="itemMarginBottom" format="dimension|reference"/>
+        <attr name="itemMarginTop"
+              format="dimension|reference"/>
+        <attr name="itemMarginBottom"
+              format="dimension|reference"/>
         <!--<attr name="leftThreshold" format="integer|reference"/>-->
         <!--<attr name="rightThreshold" format="integer|reference"/>-->
-        <attr name="horizontalThreshold" format="dimension|reference"/>
+        <attr name="horizontalThreshold"
+              format="dimension|reference"/>
+    </declare-styleable>
+    <declare-styleable name="PhoneLayout">
+        <attr name="pileItemOffset"
+              format="dimension|reference"/>
+        <attr name="pileItemSum"
+              format="dimension|reference"/>
     </declare-styleable>
 </resources>
