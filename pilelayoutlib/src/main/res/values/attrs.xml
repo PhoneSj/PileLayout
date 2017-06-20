@@ -10,10 +10,4 @@
         <attr name="horizontalThreshold"
               format="dimension|reference"/>
     </declare-styleable>
-    <declare-styleable name="PhoneLayout">
-        <attr name="pileItemOffset"
-              format="dimension|reference"/>
-        <attr name="pileItemSum"
-              format="dimension|reference"/>
-    </declare-styleable>
 </resources>

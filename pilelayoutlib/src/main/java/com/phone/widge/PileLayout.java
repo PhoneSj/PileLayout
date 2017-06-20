@@ -274,6 +274,7 @@ public class PileLayout extends ViewGroup {
 	public boolean onTouchEvent(MotionEvent event) {
 		switch (event.getActionMasked()) {
 			case MotionEvent.ACTION_DOWN:
+				mDirection = Direction.NONE;
 				mDownX = event.getX();
 				mDownY = event.getY();
 				mLastX = event.getX();
@@ -338,7 +339,6 @@ public class PileLayout extends ViewGroup {
 					}
 					isLongClick = false;
 				}
-				mDirection = Direction.NONE;
 				mLastX = 0;
 				mLastY = 0;
 				mLastDownTime = 0;
